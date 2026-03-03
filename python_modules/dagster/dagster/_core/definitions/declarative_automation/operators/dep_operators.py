@@ -130,8 +130,7 @@ class DepsAutomationCondition(BuiltinAutomationCondition[T_EntityKey]):
         index: int | None,
         target_key: EntityKey | None,
     ) -> str:
-        """Ignore allow_selection / ignore_selection for the cursor hash."""
-        parts = [str(parent_unique_id), str(index), self.base_name]
+        parts = [str(parent_unique_id), str(index), self.name]
         return non_secure_md5_hash_str("".join(parts).encode())
 
     def get_backcompat_node_unique_ids(
@@ -141,11 +140,13 @@ class DepsAutomationCondition(BuiltinAutomationCondition[T_EntityKey]):
         index: int | None = None,
         target_key: EntityKey | None = None,
     ) -> Sequence[str]:
-        # backcompat for previous cursors where the allow/ignore selection influenced the hash
+        # backcompat for previous cursors where the allow/ignore selection was ignored
+        parts = [str(parent_unique_id), str(index), self.base_name]
         return [
+            non_secure_md5_hash_str("".join(parts).encode()),
             super().get_node_unique_id(
                 parent_unique_id=parent_unique_id, index=index, target_key=target_key
-            )
+            ),
         ]
 
     @public

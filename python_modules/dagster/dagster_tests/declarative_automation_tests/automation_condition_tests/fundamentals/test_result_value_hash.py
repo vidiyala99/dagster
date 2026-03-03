@@ -42,8 +42,8 @@ two_parents_daily = two_parents.with_asset_properties(partitions_def=daily_parti
         ("3a3793b6b0267173caf31b043c836a1a", AC.eager(), one_parent, True),
         ("dd079a402386d1a5a750c6d12aa6af75", AC.eager(), one_parent_daily, False),
         (
-            # note: identical hash to the above
-            "dd079a402386d1a5a750c6d12aa6af75",
+            # now different from the above, as the allow selection influences the hash
+            "56aded97ef29ff63b4f7d86bd2484f53",
             AC.eager().allow(AssetSelection.all()),
             one_parent_daily,
             False,
@@ -139,11 +139,11 @@ def test_node_unique_id() -> None:
     )
     assert (
         condition.get_node_unique_id(parent_unique_id=None, index=None, target_key=None)
-        == "80f87fb32baaf7ce3f65f68c12d3eb11"
+        == "35b152923d1d99348e85c3cbe426bcb7"
     )
     assert condition.get_backcompat_node_unique_ids(
         parent_unique_id=None, index=None, target_key=None
-    ) == ["35b152923d1d99348e85c3cbe426bcb7"]
+    ) == ["80f87fb32baaf7ce3f65f68c12d3eb11", "35b152923d1d99348e85c3cbe426bcb7"]
 
 
 def test_since_condition_cursor_backcompat() -> None:
