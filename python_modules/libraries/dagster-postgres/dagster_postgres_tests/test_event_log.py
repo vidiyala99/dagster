@@ -135,9 +135,11 @@ class TestPostgresEventLogStorage(TestEventLogStorage):
             if statement.lstrip().upper().startswith("SELECT")
             and "asset_check_executions" in statement
         ]
-        assert len(asset_check_selects) == math.ceil(
-            len(check_keys) / ASSET_CHECK_PARTITION_INFO_BATCH_SIZE
+        expected_batch_size = min(
+            ASSET_CHECK_PARTITION_INFO_BATCH_SIZE,
+            ASSET_CHECK_PARTITION_INFO_MAX_BIND_PARAMS // 3,
         )
+        assert len(asset_check_selects) == math.ceil(len(check_keys) / expected_batch_size)
 
     def test_asset_check_partition_info_uses_bounded_queries_for_large_filtered_batches(
         self, storage
@@ -184,7 +186,7 @@ class TestPostgresEventLogStorage(TestEventLogStorage):
         ]
         expected_batch_size = min(
             ASSET_CHECK_PARTITION_INFO_BATCH_SIZE,
-            (ASSET_CHECK_PARTITION_INFO_MAX_BIND_PARAMS - len(partition_keys)) // 2,
+            (ASSET_CHECK_PARTITION_INFO_MAX_BIND_PARAMS - (2 * len(partition_keys))) // 3,
         )
         assert len(asset_check_selects) == math.ceil(len(check_keys) / expected_batch_size)
 

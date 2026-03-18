@@ -3380,7 +3380,10 @@ class SqlEventLogStorage(EventLogStorage):
         if partition_keys is None:
             return [None]
 
-        max_partition_keys_per_query = max(1, (ASSET_CHECK_PARTITION_INFO_MAX_BIND_PARAMS - 3) // 2)
+        # Allocate approximately half the available maximum bind parameter budget to partition keys 
+        # so that the remaining budget still permits a large batch of check keys. Each partition
+        # key uses 2 bind parameters, so budget/2/2 = budget/4.
+        max_partition_keys_per_query = max(1, ASSET_CHECK_PARTITION_INFO_MAX_BIND_PARAMS // 4)
         unique_partition_keys = list(dict.fromkeys(partition_keys))
         return [
             unique_partition_keys[i : i + max_partition_keys_per_query]
