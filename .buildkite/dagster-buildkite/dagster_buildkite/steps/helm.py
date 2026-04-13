@@ -1,3 +1,4 @@
+import logging
 import os
 
 from buildkite_shared.context import BuildkiteContext
@@ -11,18 +12,18 @@ from buildkite_shared.step_builders.group_step_builder import (
     GroupStepBuilder,
 )
 from buildkite_shared.step_builders.step_builder import StepConfiguration, is_command_step
+from buildkite_shared.utils import oss_path
 from dagster_buildkite.steps.packages import PackageSpec
-from dagster_buildkite.utils import has_helm_changes, skip_if_no_helm_changes
 
 
 def build_helm_steps(ctx: BuildkiteContext) -> list[StepConfiguration]:
     package_spec = PackageSpec(
-        os.path.join("helm", "dagster", "schema"),
+        oss_path(os.path.join("helm", "dagster", "schema")),
         # run helm schema tests only once, on the latest python version
         unsupported_python_versions=AvailablePythonVersion.get_all()[:-1],
         name="dagster-helm",
         retries=2,
-        always_run_if=lambda: has_helm_changes(ctx),
+        force_run_fn=BuildkiteContext.has_helm_changes,
     )
 
     steps: list[GroupLeafStepConfiguration] = []
@@ -50,18 +51,18 @@ def _build_lint_steps(
         CommandStepBuilder("dagster-json-schema")
         .on_test_image()
         .run(
-            "pip install -e helm/dagster/schema",
+            f"pip install -e {oss_path('helm/dagster/schema')}",
             "dagster-helm schema apply",
             "git diff --exit-code",
         )
-        .skip(skip_if_no_helm_changes(ctx) and package_spec.get_skip_reason(ctx))
+        .skip(_get_helm_step_skip_reason(ctx) and package_spec.get_skip_reason(ctx))
         .build(),
         CommandStepBuilder(":lint-roller: dagster")
         .on_test_image()
         .run(
-            "helm lint helm/dagster --with-subcharts --strict",
+            f"helm lint {oss_path('helm/dagster')} --with-subcharts --strict",
         )
-        .skip(skip_if_no_helm_changes(ctx) or package_spec.get_skip_reason(ctx))
+        .skip(_get_helm_step_skip_reason(ctx) or package_spec.get_skip_reason(ctx))
         .with_retry(2)
         .build(),
         CommandStepBuilder("dagster dependency build")
@@ -70,8 +71,22 @@ def _build_lint_steps(
         .run(
             "helm repo add bitnami-pre-2022"
             " https://raw.githubusercontent.com/bitnami/charts/eb5f9a9513d987b519f0ecd732e7031241c50328/bitnami",
-            "helm dependency build helm/dagster",
+            f"helm dependency build {oss_path('helm/dagster')}",
         )
-        .skip(skip_if_no_helm_changes(ctx) and package_spec.get_skip_reason(ctx))
+        .skip(_get_helm_step_skip_reason(ctx) and package_spec.get_skip_reason(ctx))
         .build(),
     ]
+
+
+def _get_helm_step_skip_reason(ctx: BuildkiteContext) -> str | None:
+    if ctx.config.no_skip:
+        return None
+
+    if not ctx.is_feature_branch:
+        return None
+
+    if ctx.has_helm_changes():
+        logging.info("Run helm steps because files in the helm directory changed")
+        return None
+
+    return "No helm changes"

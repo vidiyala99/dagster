@@ -1,6 +1,7 @@
 import os
 
 from buildkite_shared.context import BuildkiteContext
+from buildkite_shared.packages import get_general_python_step_skip_reason
 from buildkite_shared.step_builders.command_step_builder import (
     BuildkiteQueue,
     CommandStepBuilder,
@@ -8,6 +9,7 @@ from buildkite_shared.step_builders.command_step_builder import (
 )
 from buildkite_shared.step_builders.group_step_builder import GroupStepBuilder
 from buildkite_shared.step_builders.step_builder import StepConfiguration
+from buildkite_shared.utils import oss_path
 from buildkite_shared.uv import UV_PIN
 from dagster_buildkite.steps.helm import build_helm_steps
 from dagster_buildkite.steps.integration import build_integration_steps
@@ -16,16 +18,11 @@ from dagster_buildkite.steps.packages import (
     build_library_packages_steps,
 )
 from dagster_buildkite.steps.test_project import build_test_project_steps
-from dagster_buildkite.utils import (
-    skip_if_no_non_docs_markdown_changes,
-    skip_if_no_pyright_requirements_txt_changes,
-    skip_if_no_python_changes,
-    skip_if_no_yaml_changes,
-)
 
 
 def build_buildkite_lint_steps() -> list[CommandStepConfiguration]:
     commands = [
+        f"cd {oss_path('.')}",
         "pytest .buildkite/buildkite-shared/lints.py",
     ]
     return [CommandStepBuilder(":lint-roller: :buildkite:").run(*commands).on_test_image().build()]
@@ -35,7 +32,6 @@ def build_repo_wide_steps(ctx: BuildkiteContext) -> list[StepConfiguration]:
     # Other linters may be run in per-package environments because they rely on the dependencies of
     # the target. `pyright` and `ruff` are run for the whole repo at once.
     return [
-        *build_check_changelog_steps(ctx),
         *build_repo_wide_pyright_steps(ctx),
         *build_repo_wide_ruff_steps(ctx),
         *build_repo_wide_prettier_steps(ctx),
@@ -73,10 +69,10 @@ def build_repo_wide_ruff_steps(ctx: BuildkiteContext) -> list[CommandStepConfigu
         CommandStepBuilder(":zap: ruff", retry_automatically=False)
         .on_test_image()
         .run(
-            "uv pip install --system -e python_modules/dagster[ruff] -e python_modules/dagster-pipes -e python_modules/libraries/dagster-shared",
-            "make check_ruff",
+            f"uv pip install --system -e {oss_path('python_modules/dagster')}[ruff] -e {oss_path('python_modules/dagster-pipes')} -e {oss_path('python_modules/libraries/dagster-shared')}",
+            f"make -C {oss_path('.')} check_ruff",
         )
-        .skip(skip_if_no_python_changes(ctx))
+        .skip(get_general_python_step_skip_reason(ctx))
         .build(),
     ]
 
@@ -86,22 +82,10 @@ def build_repo_wide_prettier_steps(ctx: BuildkiteContext) -> list[CommandStepCon
         CommandStepBuilder(":prettier: prettier", retry_automatically=False)
         .on_test_image()
         .run(
-            "make install_prettier",
-            "make check_prettier",
+            f"make -C {oss_path('.')} install_prettier",
+            f"make -C {oss_path('.')} check_prettier",
         )
-        .skip(skip_if_no_yaml_changes(ctx) and skip_if_no_non_docs_markdown_changes(ctx))
-        .build(),
-    ]
-
-
-def build_check_changelog_steps(ctx: BuildkiteContext) -> list[CommandStepConfiguration]:
-    if not ctx.is_release_branch:
-        return []
-
-    return [
-        CommandStepBuilder(":memo: changelog")
-        .run(f"python scripts/check_changelog.py {ctx.release_version}")
-        .on_test_image()
+        .skip(_get_prettier_step_skip_reason(ctx))
         .build(),
     ]
 
@@ -118,10 +102,10 @@ def build_repo_wide_pyright_steps(ctx: BuildkiteContext) -> list[StepConfigurati
                     f'pip install -U "{UV_PIN}"',
                     "uv venv",
                     "source .venv/bin/activate",
-                    "make install_pyright",
-                    "make pyright",
+                    f"make -C {oss_path('.')} install_pyright",
+                    f"make -C {oss_path('.')} pyright",
                 )
-                .skip(skip_if_no_python_changes(ctx, overrides=["pyright"]))
+                .skip(get_general_python_step_skip_reason(ctx, other_paths=["pyright"]))
                 # Run on a larger instance
                 .on_queue(BuildkiteQueue.DOCKER)
                 .build(),
@@ -132,10 +116,10 @@ def build_repo_wide_pyright_steps(ctx: BuildkiteContext) -> list[StepConfigurati
                     f'pip install -U "{UV_PIN}"',
                     "uv venv",
                     "source .venv/bin/activate",
-                    "make install_pyright",
-                    "make rebuild_pyright_pins",
+                    f"make -C {oss_path('.')} install_pyright",
+                    f"make -C {oss_path('.')} rebuild_pyright_pins",
                 )
-                .skip(skip_if_no_pyright_requirements_txt_changes(ctx))
+                .skip(_get_pyright_pin_step_skip_reason(ctx))
                 .build(),
             ],
             key="pyright",
@@ -147,10 +131,10 @@ def build_sql_schema_check_steps(ctx: BuildkiteContext) -> list[CommandStepConfi
     return [
         CommandStepBuilder(":mysql: mysql-schema")
         .run(
-            "uv pip install --system -e python_modules/dagster -e python_modules/dagster-pipes -e python_modules/libraries/dagster-shared",
-            "python scripts/check_schemas.py",
+            f"uv pip install --system -e {oss_path('python_modules/dagster')} -e {oss_path('python_modules/dagster-pipes')} -e {oss_path('python_modules/libraries/dagster-shared')}",
+            f"python {oss_path('scripts/check_schemas.py')}",
         )
-        .skip(skip_mysql_if_no_changes_to_dependencies(ctx, ["dagster"]))
+        .skip(_get_sql_schema_check_skip_reason(ctx, ["dagster"]))
         .on_test_image()
         .build(),
     ]
@@ -162,13 +146,13 @@ def build_graphql_python_client_backcompat_steps(
     return [
         CommandStepBuilder(":graphql: GraphQL Python Client backcompat")
         .run(
-            "uv pip install --system -e python_modules/dagster[test] -e python_modules/dagster-pipes"
-            " -e python_modules/libraries/dagster-shared -e python_modules/dagster-graphql"
-            " -e python_modules/automation",
+            f"uv pip install --system -e {oss_path('python_modules/dagster')}[test] -e {oss_path('python_modules/dagster-pipes')}"
+            f" -e {oss_path('python_modules/libraries/dagster-shared')} -e {oss_path('python_modules/dagster-graphql')}"
+            f" -e {oss_path('python_modules/automation')}",
             "dagster-graphql-client query check",
         )
         .skip(
-            skip_graphql_if_no_changes_to_dependencies(
+            _get_graphql_python_client_backcompat_skip_reason(
                 ctx, ["dagster", "dagster-graphql", "automation"]
             )
         )
@@ -177,27 +161,52 @@ def build_graphql_python_client_backcompat_steps(
     ]
 
 
-def skip_mysql_if_no_changes_to_dependencies(
-    ctx: BuildkiteContext, dependencies: list[str]
+# ########################
+# ##### SKIP HELPERS
+# ########################
+
+
+def _get_sql_schema_check_skip_reason(
+    ctx: BuildkiteContext, sql_schema_dependencies: list[str]
 ) -> str | None:
-    if not ctx.is_feature_branch:
+    if ctx.config.no_skip:
         return None
+    elif not ctx.is_feature_branch:
+        return None
+    elif any(ctx.has_package_changes(dep) for dep in sql_schema_dependencies):
+        return None
+    return "No MySQL schema changes"
 
-    for dependency in dependencies:
-        if ctx.python_packages.get(dependency) in ctx.python_packages.with_changes:
-            return None
 
-    return "Skip unless mysql schemas might have changed"
-
-
-def skip_graphql_if_no_changes_to_dependencies(
-    ctx: BuildkiteContext, dependencies: list[str]
+def _get_graphql_python_client_backcompat_skip_reason(
+    ctx: BuildkiteContext, gql_schema_dependencies: list[str]
 ) -> str | None:
-    if not ctx.is_feature_branch:
+    if ctx.config.no_skip:
         return None
+    elif not ctx.is_feature_branch:
+        return None
+    elif any(ctx.has_package_changes(dep) for dep in gql_schema_dependencies):
+        return None
+    return "No GraphQL schema changes"
 
-    for dependency in dependencies:
-        if ctx.python_packages.get(dependency) in ctx.python_packages.with_changes:
-            return None
 
-    return "Skip unless GraphQL schemas might have changed"
+def _get_pyright_pin_step_skip_reason(ctx: BuildkiteContext) -> str | None:
+    if ctx.config.no_skip:
+        return None
+    elif not ctx.is_feature_branch:
+        return None
+    elif ctx.has_pyright_requirements_txt_changes():
+        return None
+    return "No pyright requirements.txt changes"
+
+
+def _get_prettier_step_skip_reason(ctx: BuildkiteContext) -> str | None:
+    if ctx.config.no_skip:
+        return None
+    elif not ctx.is_feature_branch:
+        return None
+    elif ctx.has_yaml_changes():
+        return None
+    elif ctx.has_non_docs_markdown_changes():
+        return None
+    return "No yaml changes or markdown changes outside docs"

@@ -1,5 +1,146 @@
 # Changelog
 
+## 1.13.0 (core) / 0.29.0 (libraries)
+
+### Major Changes Since 1.12.0
+
+- **AI-assisted development**: Released [dagster-io/skills](https://github.com/dagster-io/skills), a collection of Dagster-focused AI skills for coding agents like Claude Code, OpenAI Codex, and others. Expanded `dg api` commands for programmatic inspection of assets, runs, jobs, schedules, and more.
+- **Partitioned asset checks**: Asset checks can now target specific partitions of an upstream asset, aligning data quality logic with how partitioned data is produced and monitored.
+- **State-backed components enabled by default**: Integrations that depend on external metadata (dbt, Fivetran, Airbyte, Tableau, Looker, etc.) now use persisted local state by default, providing a more predictable code location loading experience.
+- **Virtual assets (preview)**: New `is_virtual` parameter on `@asset` and `AssetSpec` for modeling assets like database views that automatically reflect upstream changes without explicit materialization.
+- **20+ new components**: Added or expanded components for dbt Cloud, Spark, Azure (Blob Storage, ADLS2), GCP (BigQuery, GCS, Dataproc), Databricks, Tableau, Looker, Census, Polytomic, and more. Integrations gained richer observability, metadata, and operational support.
+- **Deeper integration support**: dbt Cloud supports partitioned assets; Databricks gained job-level subsetting and auto-cancel on run termination; Fivetran added polling sensors, retry-on-reschedule, and resync support; BI integrations auto-enrich assets with table metadata for cross-system lineage.
+- **Dagster+ improvements**: Organization-level timezone settings, service users for Pro accounts, more resilient code server redeploy behavior, improved agent failure recovery, and expanded insights and alerting workflows.
+
+### Breaking Changes
+
+- Removed deprecated `external_asset_from_spec` and `external_assets_from_specs`. Use `AssetSpec` inputs directly to `Definitions(...)` or `AssetsDefinition(specs=[...])` instead.
+- Removed deprecated single-`AssetKey` `deps` argument support from asset dependencies. Use a sequence of `AssetDep` objects instead.
+- Removed deprecated `get_all_asset_specs` from `Definitions`.
+- Removed deprecated `legacy_freshness_policy` parameter from `@observable_source_asset`.
+- Removed deprecated `auto_observe_interval_minutes` parameter from `@observable_source_asset`.
+- Removed deprecated `legacy_freshness_policies_by_output_name` parameter from `AssetsDefinition`.
+- Removed deprecated `load_component_at_path` from `ComponentLoadContext`. Use `context.load_component` instead.
+- Removed deprecated `build_defs_at_path` from `ComponentLoadContext`.
+- [dagster-airbyte] Removed deprecated `AirbyteState` enum (use `AirbyteJobStatusType` instead) and removed deprecated `legacy_freshness_policy` and `auto_materialize_policy` parameters from `build_airbyte_assets()`.
+- [dagster-looker] Removed deprecated `DagsterLookerResource.build_defs`, `get_asset_key`, `get_dashboard_asset_key`, `get_explore_asset_key`, `get_view_asset_key` methods, and `Type[DagsterLookerApiTranslator]` support from API helpers.
+- [dagster-powerbi] Removed deprecated `PowerBIWorkspace.build_defs()`, translator key helpers (use `get_asset_spec()` instead), and `Type[DagsterPowerBITranslator]` support in `load_powerbi_asset_specs()` (pass an instance instead).
+- [dagster-sigma] Removed deprecated `SigmaOrganization.build_defs()`, `DagsterSigmaTranslator.get_asset_key()` (use `get_asset_spec(...).key` instead), and `Type[DagsterSigmaTranslator]` support in `load_sigma_asset_specs()` (pass an instance instead).
+
+### New
+
+- (Preview) Added support for virtual assets. The `@asset` decorator and `AssetSpec` now accept an `is_virtual` parameter for defining assets that represent views or derived tables that don't need to be materialized. Virtual assets are supported in staleness calculations, execution planning, and declarative automation.
+- Job-level config defaults are now applied when partial config is provided to a run.
+- [dagster-dbt] Added `enable_dbt_views_as_virtual_assets` setting to `DbtTranslatorSettings` for automatically treating dbt views as virtual assets.
+
+### Bugfixes
+
+- Fixed an issue where a sensor targeting a job with `run_tags` and specifying an `asset_selection` in the `RunRequest` would not apply the job's `run_tags` to the resulting run.
+- Fixed a potential error in YAML config snapshot conversion when encountering `None` fields.
+- [dg] Fixed `dg plus deploy configure` generating a GitHub Action that used Docker instead of the PEX build strategy.
+- [dagster-cloud-cli] PR comments in CI are now scoped by deployment name, preventing overwrites across deployments.
+- [ui] Fixed "Missing" partition selection for time-based partitioned assets.
+- [ui] Fixed raw log display rendering after `ansi-to-react` library update.
+- [ui] "Terminate all runs" dialog now handles extremely large sets of runs more reliably.
+
+### Documentation
+
+- Added Dagster+ agent configuration page for serverless and hybrid deployments.
+- Added data portability documentation page.
+- Reorganized run isolation documentation for hybrid and serverless deployments.
+- Added ELT pipeline example with dlt and Sling.
+
+### Dagster Plus
+
+- Added SCIM Groups filter support for `members.value eq` queries.
+- Fixed an issue where the Dagster+ Kubernetes agent would emit log noise about `DAGSTER_CLOUD_RAW_GIT_URL` and `DAGSTER_CLOUD_GIT_URL` environment variables when `onlyAllowUserDefinedK8sConfigFields` was set.
+- Fixed incorrect alert type label for metrics alerts.
+
+## 1.12.22 (core) / 0.28.22 (libraries)
+
+### New
+
+- [dg] `dg` projects can now configure `agent_queue` and `image` in `pyproject.toml` under `[tool.dg.project]`, which are included in the generated `dagster_cloud.yaml` when running `dg plus deploy`.
+- [dg] Added `dg api job list` and `dg api job get` commands for querying job metadata including schedules, sensors, and tags.
+- [dg] Added `dg api asset-check list`, `dg api asset-check get-executions`, and `dg api asset get-partition-status` commands.
+- [ui] The asset overview page now shows a loading spinner for "Latest materialization" while data is loading, instead of a dash.
+- [ui] Removed the legacy asset catalog component and the `flagAssetCatalogSidebar` feature flag. The asset catalog sidebar is now always enabled.
+- [ui] The pipeline snapshot link is no longer shown in the Run Actions Menu for hidden asset group jobs.
+- [dagster-aws] The `EcsRunLauncher` and Dagster+ ECS agent now supply idempotency tokens when creating ECS services and tasks, improving retry behavior after transient failures.
+- [dagster-dbt] `DbtCloudComponent` now supports an option to include a polling sensor for monitoring dbt Cloud job runs.
+
+### Bugfixes
+
+- Fixed `snap_to_yaml` incorrectly removing empty dicts that represent valid config values for `Permissive`, `Map`, and `Noneable` config types.
+- Fixed an issue where resources defined in parent components could incorrectly trigger `DagsterInvalidDefinitionError` during nested component `post_processing` resolution. (Thanks, [@vidiyala99](https://github.com/vidiyala99)!)
+- [dagster-aws] Fixed `PipesECSClient` incorrectly treating a task that failed to start as a successful execution.
+- [dagster-fivetran] Fixed an incorrect connector URL format generated by the Fivetran integration.
+- [ui] Fixed a performance issue where canceling a backfill before any runs executed would unnecessarily fetch the entire asset materialization history.
+- [dg] Fixed `dg plus deploy` not correctly pulling in environment variables when refreshing definitions state for state-backed components.
+- [ui] Fixed ANSI color rendering in run logs.
+- [ui] Fixed a visual rendering issue with the graph depth input field.
+
+### Documentation
+
+- Added a migration guide for moving from sensors to declarative automation.
+- Added documentation for the ECS executor.
+
+### Dagster Plus
+
+- Alert policies can now be muted for a configurable duration. Muted policies do not send notifications and show when they will resume.
+- [dagster-dbt] Added `dg plus integrations dbt download-manifest` command to download dbt manifests from Dagster Plus for local development.
+
+## 1.12.21 (core) / 0.28.21 (libraries)
+
+### New
+
+- Removed the `setuptools<82` pin from the `dagster` package.
+- Added support for the `partitions` attribute in asset selection syntax to filter assets by partition definition type (e.g., `partitions:"static"`).
+- [dagster-spark] Added Spark Declarative Pipeline support in feature preview.
+- [ui] Added a date range picker to the backfill modal for date-formatted partitions.
+- [ui] The "Report evaluation" action for asset checks has been moved to a consolidated dropdown menu.
+
+### Bugfixes
+
+- [dagster-dbt] Fixed issue that could cause `DbtProjectComponent`s with custom translation methods to not work with utilities like `build_schedule_from_dbt_selection`.
+- [ui] Fixed asset catalog sidebar not clearing key prefix filters when navigating back to root.
+- [ui] Fixed deployment switcher button text color in Light Mode.
+- [ui] Fixed duplicate "Catalog" breadcrumb on asset detail pages.
+- [ui] Fixed lineage graph edges disappearing when zoomed out by increasing the maximum visible edge limit.
+
+### Documentation
+
+- Added cross-account service discovery documentation for ECS agents, including the `service_discovery_role_arn` configuration parameter.
+- Added Snowflake EL ingestion pattern documentation.
+
+## 1.12.20 (core) / 0.28.20 (libraries)
+
+### New
+
+- Execution context classes (`OpExecutionContext`, `AssetExecutionContext`, `AssetCheckExecutionContext`) now expose a `multi_partition_key` property that returns a `MultiPartitionKey` when the current run is a multi-partition run.
+- Added `Braze` and `Runpod` kind tags. (Thanks, [@dragos-pop](https://github.com/dragos-pop)!)
+- [dagster-databricks] The Databricks job run URL is now rendered as a clickable link in the Dagster UI.
+- [dagster-dbt] Added `DbtCloudComponent` for loading dbt Cloud projects as Dagster assets using the Components API.
+- [dagster-dbt] The `dbt_cloud_assets` decorator now supports partitioned assets via the `partitions_def` parameter.
+- [dagster-fivetran] Added a polling sensor for Fivetran observability, which detects externally-triggered syncs and emits materialization events.
+- [dagster-fivetran] `FivetranWorkspace` now supports a `retry_on_reschedule` option to automatically retry syncs rescheduled by Fivetran due to quota limits, as well as `resync` operations.
+- [dagster-fivetran] The Fivetran translator now includes sync schedule and custom report metadata on connector assets.
+- [dagster-k8s] The Dagster Helm chart and Dagster+ Kubernetes Agent Helm chart now support `k8sApiCaBundlePath` to configure a custom CA certificate path for Kubernetes API communication.
+- [dagster-k8s] Code location server Kubernetes Services now support a `service_spec_config` field for arbitrary Kubernetes Service spec overrides (for example, `clusterIP: None` for headless services).
+
+### Bugfixes
+
+- Fixed an issue where time window partitions with exclusions would sometimes create more runs than needed when using single-run backfills.
+- Fixed a "Cannot access partition_key for a non-partitioned run" error that could occur with multi-asset definitions that included non-partitioned assets or asset checks alongside partitioned ones.
+- [dagster-aws] Fixed `s3_pickle_io_manager` failing with dynamic outputs when step keys contain bracket characters in the generated S3 object path.
+- [dagster-aws] Fixed an issue in `PipesEMRServerlessClient` where a custom CloudWatch log group name configured in `monitoringConfiguration.cloudWatchLoggingConfiguration.logGroupName` was ignored, causing log streaming to always use the default `/aws/emr-serverless` log group. (Thanks, [@kchainani-figma](https://github.com/kchainani-figma)!)
+- [ui] Fixed the asset recent updates trend visualization when multiple event types share the same run ID.
+- [ui] Fixed text wrapping and spacing in the asset event detail view for long partition names and run titles.
+
+### Documentation
+
+- Added a troubleshooting guide for Kubernetes agent network connectivity issues, including TCP keepalive configuration recommendations for Helm chart deployments.
+
 ## 1.12.19 (core) / 0.28.19 (libraries)
 
 ### New

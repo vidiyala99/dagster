@@ -86,6 +86,12 @@ Pushing changes to the `main` branch of that project repository will automatical
 
 During the deployment, the agent will attempt to load your code and update the metadata in Dagster+. When that has finished, you should see the GitHub Action complete successfully, and also be able to see the code location under the **Deployment** tag in Dagster+.
 
+:::note Environment variables in CI
+
+During the deployment process, environment variables configured in your Dagster+ deployment are automatically fetched and made available during code loading. This means components that require credentials (such as database passwords or API keys) will have access to them in CI without needing to duplicate them as GitHub Secrets. The appropriate scope is selected automatically based on deployment type (full deployment or branch deployment).
+
+:::
+
 <UpdateGitHubActionVersion />
 
 ## GitLab
@@ -162,7 +168,7 @@ Before following the steps in this section, you must first [create a Dagster pro
 
 :::
 
-If you don't want to use our automated GitHub/GitLab process, you can use the [`dg` CLI](/api/clis/dg-cli) or the [`dagster-cloud` CLI](/api/clis/dagster-cloud-cli) in another CI environment or locally.
+If you don't want to use our automated GitHub/GitLab process, you can use the [`dg` CLI](/api/clis/dg-cli/dg-cli-reference) or the [`dagster-cloud` CLI](/api/clis/dagster-cloud-cli) in another CI environment or locally.
 
 1. First, [create a new project with the `create-dagster project` command](/guides/build/projects/creating-projects) and activate the project virtual environment.
 
